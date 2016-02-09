@@ -1,0 +1,44 @@
+# parameters used for submitters
+
+# User and project of the openstack cluster
+# Note that your ASG program should use these 2 parameters
+# Never hard code them in your program :)
+
+USER_NAME=admin
+PROJECT_NAME=admin
+PASSWORD=labstack
+
+# Image and flavor for the data center instance
+DC_IMAGE=image.lb
+DC_FLAVOR=m1.smedium
+
+#
+# Auto scaling group parameters. Use in task3.
+#
+
+# Your java/python ASG program should use parameters declared here.
+
+# information about instances launched by the ASG
+ASG_IMAGE=image.lb
+ASG_FLAVOR=m1.btiny
+ASG_NAME="719ASG"
+
+# IP address of the load balancer used by ASG
+LB_IPADDR=10.211.18.35
+
+# CPU thresholds
+CPU_UPPER_TRES=30
+CPU_LOWER_TRES=50
+
+# ASG min/max instance number
+MIN_INSTANCE=1
+MAX_INSTANCE=2
+
+# Evaluation period (in second) and evaluation count
+EVAL_PERIOD=5
+EVAL_COUNT=2
+
+# ASG cooldown time (in second)
+COOLDOWN=60
+# ASG instance number increase/decrease by
+DELTA=1

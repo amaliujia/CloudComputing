@@ -1,0 +1,12 @@
+
+*.class
+
+BuildCloud/LoadBalancer/target/*
+
+BuildCloud/AutoScaling/.idea/*
+
+BuildCloud/AutoScaling/AutoScaling.iml
+
+BuildCloud/LoadBalancer/.idea/*
+
+BuildCloud/LoadBalancer/cc-q-3.iml
