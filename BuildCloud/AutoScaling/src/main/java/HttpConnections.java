@@ -7,10 +7,10 @@ import java.net.URL;
 public class HttpConnections {
     private final static String USER_AGENT = "Mozilla/5.0";
 
-    public static void addInstanceToLoadBalancer(String lb, String ip) {
+    public static void addInstanceToLoadBalancer(String lb, DataCenterInstance instance) {
         URL obj = null;
         try {
-            String url = "http://" + lb + ":8080/add?ip=" + ip;
+            String url = "http://" + lb + ":8080/add?ip=" + instance.getIP();
             obj = new URL(url);
             HttpURLConnection con = (HttpURLConnection) obj.openConnection();
             con.setRequestMethod("GET");
@@ -18,7 +18,26 @@ public class HttpConnections {
             con.setConnectTimeout(5000);
 
             int responseCode = con.getResponseCode();
-            System.out.println();
+            System.out.println("\nSending 'GET' request to URL : " + instance.getIP());
+            System.out.println("Response Code : " + responseCode);
+        } catch (Exception e){
+            e.printStackTrace();
+        }
+    }
+
+    public static void removeInstanceFromLoadBalancer(String lb, DataCenterInstance instance) {
+        URL obj = null;
+        try {
+            String url = "http://" + lb + ":8080/remove?ip=" + instance.getIP();
+            obj = new URL(url);
+            HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+            con.setRequestMethod("GET");
+            con.setRequestProperty("User-Agent", HttpConnections.USER_AGENT);
+            con.setConnectTimeout(5000);
+
+            int responseCode = con.getResponseCode();
+            System.out.println("\nSending 'GET' request to URL : " + instance.getIP());
+            System.out.println("Response Code : " + responseCode);
         } catch (Exception e){
             e.printStackTrace();
         }

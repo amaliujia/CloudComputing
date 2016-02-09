@@ -11,11 +11,16 @@ public class CloudWatch {
 
     public final Map<String, String> params;
     public final OSClient os;
+    public final List<DataCenterInstance> instances;
+    public final FlagWrapper wrapper;
 
-    public CloudWatch(Map<String, String> params, OSClient os) {
+    public CloudWatch(Map<String, String> params, OSClient os, List<DataCenterInstance> instances, FlagWrapper wrapper) {
         this.params = params;
         this.os = os;
+        this.instances = instances;
+        this.wrapper = wrapper;
     }
+
 
     public void start() {
         int cooldown = Integer.parseInt(params.get("COOLDOWN"));
@@ -25,14 +30,14 @@ public class CloudWatch {
         int scale_down = Integer.parseInt(params.get("CPU_UPPER_TRES"));
         try{
             Thread.sleep(1000 * cooldown);
+            while (!wrapper.isShutdown) {
+                List<? extends Statistics> stat = os.telemetry().meters().statistics("cpu_util", period);
+                for (Statistics s : stat) {
 
-            List<? extends Statistics> stat = os.telemetry().meters().statistics("cpu_util", period);
-            for (Statistics s : stat) {
-
+                }
             }
         } catch (InterruptedException e) {
             System.exit(1);
         }
-
     }
 }

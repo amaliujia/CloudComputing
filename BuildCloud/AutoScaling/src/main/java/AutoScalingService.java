@@ -1,12 +1,19 @@
+import io.vertx.core.Vertx;
+import io.vertx.core.VertxOptions;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpServer;
+import io.vertx.core.http.HttpServerOptions;
+import io.vertx.ext.web.Router;
+import io.vertx.ext.web.RoutingContext;
 import org.openstack4j.api.Builders;
 import org.openstack4j.api.OSClient;
+import org.openstack4j.model.compute.Action;
 import org.openstack4j.model.compute.Server;
 import org.openstack4j.model.compute.ServerCreate;
 import org.openstack4j.openstack.OSFactory;
 
 import java.io.*;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Created by amaliujia on 16-2-8.
@@ -14,9 +21,15 @@ import java.util.Map;
 public class AutoScalingService {
     private String config;
 
+    private static Vertx vertx;
+    private static HttpClient httpClient;
+    private static HttpServer httpServer;
+    private static Router router;
+
     public static Map<String, String> params;
     public static OSClient os;
-
+    public static List<DataCenterInstance> instances;
+    public static FlagWrapper flagWrapper;
 
     public static void main(String[] args) {
         AutoScalingService service = new AutoScalingService(args[0]);
@@ -31,14 +44,37 @@ public class AutoScalingService {
         AutoScalingService.params = this.loadConfiguration(this.config);
         System.out.println(AutoScalingService.params.toString());
 
-        this.authenticate();
+        //this.authenticate();
         System.out.println("authentication succeed!");
 
-        this.initialize();
-
+        this.initHttpServer();
+        this.initCloudWatch();
     }
 
-    private void initialize() {
+    private void initHttpServer() {
+        vertx = Vertx.vertx(new VertxOptions().setWorkerPoolSize(1024));
+
+        // Create http server
+        HttpServerOptions serverOptions = new HttpServerOptions();
+        httpServer = vertx.createHttpServer(serverOptions);
+
+        // Create Router
+        router = Router.router(vertx);
+        router.route("/").handler(routingContext -> {
+            routingContext.response().end("OK");
+        });
+
+        router.route("/stop").handler(AutoScalingService::handleStop);
+
+        // Listen for the request on port 8080
+        httpServer.requestHandler(router::accept).listen(8080);
+    }
+
+    private void initCloudWatch() {
+        AutoScalingService.instances = new ArrayList<>();
+        AutoScalingService.flagWrapper = new FlagWrapper();
+        AutoScalingService.flagWrapper.isShutdown = false;
+
         String min_instance_str = AutoScalingService.params.get("MIN_INSTANCE");
         int min_instance = Integer.parseInt(min_instance_str);
         String flavorId = AutoScalingService.params.get("DC_FLAVOR");
@@ -52,7 +88,10 @@ public class AutoScalingService {
             // Boot the Server
             Server server = os.compute().servers().boot(VMInstance);
 
-            HttpConnections.addInstanceToLoadBalancer(LB_IP, server.getAccessIPv4());
+            // add instance to index
+            DataCenterInstance instance = new DataCenterInstance(server);
+            HttpConnections.addInstanceToLoadBalancer(LB_IP, instance);
+            AutoScalingService.instances.add(instance);
         }
 
         try {
@@ -63,12 +102,40 @@ public class AutoScalingService {
 
         Thread cloudwater = new Thread() {
             public void run() {
-                CloudWatch watch = new CloudWatch(AutoScalingService.params, AutoScalingService.os);
+                CloudWatch watch = new CloudWatch(AutoScalingService.params,
+                                                    AutoScalingService.os,
+                                                    AutoScalingService.instances,
+                                                    AutoScalingService.flagWrapper);
                 watch.start();
             }
         };
 
         cloudwater.start();
+
+    }
+
+    private static void handleStop(RoutingContext routingContext) {
+        System.out.println("\nAuto Scaling Group will shut down.\n");
+        AutoScalingService.flagWrapper.isShutdown = true;
+
+        // ready to remove all instances
+        Iterator<DataCenterInstance> iterator = instances.iterator();
+        while (iterator.hasNext()) {
+            DataCenterInstance instance = iterator.next();
+
+            System.out.println("\nShutting down....");
+            System.out.println(instance.toString());
+            // stop instance in Nova
+            os.compute().servers().action(instance.getServerID(), Action.STOP);
+
+            // remove from LB
+            HttpConnections.removeInstanceFromLoadBalancer(AutoScalingService.params.get("LB_IPADDR"), instance);
+
+            // remove from index
+            iterator.remove();
+            System.out.println("Shut down....\n");
+
+        }
     }
 
     private void authenticate() {
