@@ -23,6 +23,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * LB server
@@ -45,6 +46,7 @@ public class Server {
     private static CopyOnWriteArrayList<DataCenterInstance> instances;
     private static ServerSocket serverSocket;
     // private static String lock = "lock";
+    private static ReentrantLock lock;
     private static int instanceID = 0;
     private static TimeWrapper wrapper;
 
@@ -58,7 +60,7 @@ public class Server {
         // create dataCenterList
         // instances = new ArrayList<DataCenterInstance>();
         instances = new CopyOnWriteArrayList<>();
-
+        lock = new ReentrantLock();
         // init cooldown period
         wrapper = new TimeWrapper();
         wrapper.period = 0;
@@ -90,7 +92,7 @@ public class Server {
         // open a new thread to run the dispatcher to handle traffic from LG
         Thread launchLoadBalancer = new Thread() {
             public void run() {
-                LoadBalancer loadBalancer = new LoadBalancer(Server.serverSocket, Server.instances,  Server.wrapper);
+                LoadBalancer loadBalancer = new LoadBalancer(Server.serverSocket, Server.instances,  Server.wrapper, Server.lock);
                 try {
                     loadBalancer.start();
                 } catch (IOException e) {
@@ -146,7 +148,7 @@ public class Server {
 //                    break;
 //                }
 //            }
-
+        lock.lock();
             for (int i = 0; i < instances.size(); i++) {
                 DataCenterInstance instance = instances.get(i);
                 if (instance.getIP().equals(dnsName)) {
@@ -155,7 +157,7 @@ public class Server {
                 }
             }
 
-
+        lock.unlock();
         routingContext.response()
                 .setStatusCode(200)
                 .putHeader("Content-Type", "text/plain; charset=utf-8")
@@ -165,7 +167,7 @@ public class Server {
     private static void handleCheck(RoutingContext routingContext) {
        String ret = "";
         Iterator<DataCenterInstance> iterator = instances.iterator();
-
+        lock.lock();
         while (iterator.hasNext()) {
             DataCenterInstance instance = iterator.next();
             if (ret.length() != 0) {
@@ -173,6 +175,7 @@ public class Server {
             }
             ret += instance.getUrl();
         }
+        lock.unlock();
         ret += "\n";
         routingContext.response().setStatusCode(200)
                 .putHeader("Content-Type", "text/plain; charset=utf-8")
@@ -189,12 +192,12 @@ public class Server {
                     .end("wrong ip\n");
             return;
         }
-
+        lock.lock();
         System.out.println("add data center instance with ip " + dnsName);
         DataCenterInstance instance = new DataCenterInstance("DC-" + instanceID, dnsName);
         instances.add(instance);
         instanceID += 1;
-
+        lock.unlock();
         routingContext.response().setStatusCode(200)
                                  .putHeader("Content-Type", "text/plain; charset=utf-8")
                                  .end("add dc instance successfully\n");

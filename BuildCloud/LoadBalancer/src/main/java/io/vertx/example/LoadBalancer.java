@@ -7,6 +7,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class LoadBalancer {
 	private static final int THREAD_POOL_SIZE = 4;
@@ -17,23 +18,17 @@ public class LoadBalancer {
 	private final CopyOnWriteArrayList<DataCenterInstance> instances;
 	// private final String lock;
 	private final TimeWrapper timeWrapper;
+	private final ReentrantLock lock;
 
 	private static boolean c = false;
 	private int indicator;
 
-	public LoadBalancer(ServerSocket socket, CopyOnWriteArrayList<DataCenterInstance> instances, TimeWrapper wrapper) {
+	public LoadBalancer(ServerSocket socket, CopyOnWriteArrayList<DataCenterInstance> instances, TimeWrapper wrapper, ReentrantLock l) {
 		this.socket = socket;
 		this.instances = instances;
 		this.timeWrapper = wrapper;
-		// lock = null;
+		this.lock = l;
 	}
-
-//	public LoadBalancer(ServerSocket socket, CopyOnWriteArrayList<DataCenterInstance> instances, String lock, TimeWrapper wrapper) {
-//		this.socket = socket;
-//		this.instances = instances;
-//		//this.lock = lock;
-//		this.timeWrapper = wrapper;
-//	}
 
 	// Complete this function
 	public void start() throws IOException {
@@ -48,6 +43,7 @@ public class LoadBalancer {
 							Thread.sleep(3000);
 						} else {
 							Thread.sleep(timeWrapper.period * 1000);
+							lock.lock();
 							for (int i = 0 ; i < instances.size(); i++) {
 								DataCenterInstance instance = instances.get(i);
 								System.out.println("\nHealth check: " + instance.getUrl());
@@ -70,7 +66,8 @@ public class LoadBalancer {
 									instances.remove(i);
 									i--;
 								}
-							}							}
+							}
+							lock.unlock();}
 					}
 				} catch (InterruptedException e) {
 					e.printStackTrace();
@@ -87,10 +84,12 @@ public class LoadBalancer {
 			System.out.println("instances has elements now!");
 
 			Socket sock = socket.accept();
+			lock.lock();
 			indicator = (indicator % instances.size());
 			System.out.println("route request to " + instances.get(indicator).getUrl());
 			Runnable requestHandler = new RequestHandler(sock, instances.get(indicator));
 			indicator++;
+			lock.unlock();
 			executorService.execute(requestHandler);
 		}
 	}
