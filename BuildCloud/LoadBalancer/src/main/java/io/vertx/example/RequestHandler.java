@@ -16,11 +16,13 @@ public class RequestHandler implements Runnable {
 
 	public void run() {
 		try {
+			System.out.println("RequestHandler start");
 			Request request = new Request(socket, instance);
 			request.execute();
 			Response response = request.getResponse();
 			sendToClient(response);
 			request.close();
+			System.out.println("RequestHandler end");
 		} catch (Exception ex) {
 			System.out.println("Exception occured when running RequestHandler: " + ex);
 			ex.printStackTrace();

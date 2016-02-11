@@ -12,6 +12,7 @@ import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 
 import javax.naming.NamingException;
+import javax.xml.crypto.Data;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -20,6 +21,8 @@ import java.net.ServerSocket;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * LB server
@@ -38,9 +41,10 @@ public class Server {
      * data structure used for LoadBalancer
      */
     private static final int PORT = 80;
-    private static List<DataCenterInstance> instances;
+    // private static List<DataCenterInstance> instances;
+    private static CopyOnWriteArrayList<DataCenterInstance> instances;
     private static ServerSocket serverSocket;
-    private static String lock = "lock";
+    // private static String lock = "lock";
     private static int instanceID = 0;
     private static TimeWrapper wrapper;
 
@@ -52,7 +56,8 @@ public class Server {
      */
     public static void main(String[] args) throws NamingException {
         // create dataCenterList
-        instances = new ArrayList<DataCenterInstance>();
+        // instances = new ArrayList<DataCenterInstance>();
+        instances = new CopyOnWriteArrayList<>();
 
         // init cooldown period
         wrapper = new TimeWrapper();
@@ -67,8 +72,6 @@ public class Server {
         httpServer = vertx.createHttpServer(serverOptions);
 
         // Create Router
-        // TODO: implement your LB
-        // TODO: add more handlers
         Router router = Router.router(vertx);
         router.route("/").handler(routingContext -> {
             routingContext.response().end("OK");
@@ -87,7 +90,7 @@ public class Server {
         // open a new thread to run the dispatcher to handle traffic from LG
         Thread launchLoadBalancer = new Thread() {
             public void run() {
-                LoadBalancer loadBalancer = new LoadBalancer(Server.serverSocket, Server.instances, Server.lock, Server.wrapper);
+                LoadBalancer loadBalancer = new LoadBalancer(Server.serverSocket, Server.instances,  Server.wrapper);
                 try {
                     loadBalancer.start();
                 } catch (IOException e) {
@@ -133,18 +136,25 @@ public class Server {
             return;
         }
 
-        synchronized (lock) {
             System.out.println("http remove data center instance with ip " + dnsName);
-            Iterator<DataCenterInstance> iterator = instances.iterator();
+//            Iterator<DataCenterInstance> iterator = instances.iterator();
+//
+//            while (iterator.hasNext()) {
+//                DataCenterInstance instance = iterator.next();
+//                if (instance.getIP().equals(dnsName)) {
+//                    iterator.remove();
+//                    break;
+//                }
+//            }
 
-            while (iterator.hasNext()) {
-                DataCenterInstance instance = iterator.next();
+            for (int i = 0; i < instances.size(); i++) {
+                DataCenterInstance instance = instances.get(i);
                 if (instance.getIP().equals(dnsName)) {
-                    iterator.remove();
+                   instances.remove(i);
                     break;
                 }
             }
-        }
+
 
         routingContext.response()
                 .setStatusCode(200)
@@ -154,16 +164,14 @@ public class Server {
 
     private static void handleCheck(RoutingContext routingContext) {
        String ret = "";
-        synchronized (lock) {
-            Iterator<DataCenterInstance> iterator = instances.iterator();
+        Iterator<DataCenterInstance> iterator = instances.iterator();
 
-            while (iterator.hasNext()) {
-                DataCenterInstance instance = iterator.next();
-                if (ret.length() != 0) {
-                    ret += ",";
-                }
-                ret += instance.getUrl();
+        while (iterator.hasNext()) {
+            DataCenterInstance instance = iterator.next();
+            if (ret.length() != 0) {
+                ret += ",";
             }
+            ret += instance.getUrl();
         }
         ret += "\n";
         routingContext.response().setStatusCode(200)
@@ -174,8 +182,6 @@ public class Server {
     private static void handleAdd(RoutingContext routingContext) {
         // to get argument from http request
         String dnsName = routingContext.request().getParam("ip");
-        // TODO: implement the add handler
-
         if (!InetAddresses.isInetAddress(dnsName)) {
             routingContext.response()
                     .setStatusCode(400)
@@ -184,12 +190,10 @@ public class Server {
             return;
         }
 
-        synchronized (lock) {
-            System.out.println("add data center instance with ip " + dnsName);
-            DataCenterInstance instance = new DataCenterInstance("DC-" + instanceID, dnsName);
-            instances.add(instance);
-            instanceID += 1;
-        }
+        System.out.println("add data center instance with ip " + dnsName);
+        DataCenterInstance instance = new DataCenterInstance("DC-" + instanceID, dnsName);
+        instances.add(instance);
+        instanceID += 1;
 
         routingContext.response().setStatusCode(200)
                                  .putHeader("Content-Type", "text/plain; charset=utf-8")

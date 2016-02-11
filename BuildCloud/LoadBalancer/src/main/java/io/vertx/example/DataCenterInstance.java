@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.net.URL;
 import java.net.URLConnection;
 
-// TODO: adjust this to handle health check
 public class DataCenterInstance {
 	public final String name;
 	public final String url;
