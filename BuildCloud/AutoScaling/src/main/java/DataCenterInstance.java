@@ -7,7 +7,7 @@ import java.util.List;
  * Created by amaliujia on 16-2-8.
  */
 public class DataCenterInstance {;
-    public final Server server;
+    public Server server;
 
     public DataCenterInstance(Server server) {
         this.server = server;
@@ -18,11 +18,11 @@ public class DataCenterInstance {;
     }
 
     public String getUrl() {
-        return "http://" + server.getAccessIPv4();
+        return "http://" + getIP();
     }
 
     public String getIP() {
-        return server.getAccessIPv4();
+        return server.getAddresses().getAddresses().get("private").get(0).getAddr();
     }
 
     public String getServerID() {

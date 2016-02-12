@@ -4,13 +4,13 @@
 # Note that your ASG program should use these 2 parameters
 # Never hard code them in your program :)
 
-USER_NAME=admin
-PROJECT_NAME=admin
+USER_NAME=demo
+PROJECT_NAME=demo
 PASSWORD=labstack
 
 # Image and flavor for the data center instance
-DC_IMAGE=image.lb
-DC_FLAVOR=m1.smedium
+DC_IMAGE=768997fc-e59c-454c-84b5-bcfe1005f37e
+DC_FLAVOR=6
 
 #
 # Auto scaling group parameters. Use in task3.
@@ -19,16 +19,16 @@ DC_FLAVOR=m1.smedium
 # Your java/python ASG program should use parameters declared here.
 
 # information about instances launched by the ASG
-ASG_IMAGE=image.lb
-ASG_FLAVOR=m1.btiny
-ASG_NAME="719ASG"
+ASG_IMAGE=768997fc-e59c-454c-84b5-bcfe1005f37e
+ASG_FLAVOR=6
+ASG_NAME=719ASG
 
 # IP address of the load balancer used by ASG
-LB_IPADDR=10.211.18.35
+LB_IPADDR=127.0.0.1
 
 # CPU thresholds
-CPU_UPPER_TRES=30
-CPU_LOWER_TRES=50
+CPU_UPPER_TRES=50
+CPU_LOWER_TRES=30
 
 # ASG min/max instance number
 MIN_INSTANCE=1

@@ -5,8 +5,8 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>15719proj1</groupId>
-    <artifactId>15719proj1.1</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <artifactId>ASG</artifactId>
+    <version>0.0.1</version>
 
 <properties>
 <!-- the main class -->

@@ -15,10 +15,10 @@ public class HttpConnections {
             HttpURLConnection con = (HttpURLConnection) obj.openConnection();
             con.setRequestMethod("GET");
             con.setRequestProperty("User-Agent", HttpConnections.USER_AGENT);
-            con.setConnectTimeout(5000);
+            con.setConnectTimeout(args.timeout);
 
             int responseCode = con.getResponseCode();
-            System.out.println("\nSending 'GET' request to URL : " + instance.getIP());
+            System.out.println("\nSend add equest to Load Balancer, URL : " + instance.getIP());
             System.out.println("Response Code : " + responseCode);
         } catch (Exception e){
             e.printStackTrace();
@@ -33,10 +33,10 @@ public class HttpConnections {
             HttpURLConnection con = (HttpURLConnection) obj.openConnection();
             con.setRequestMethod("GET");
             con.setRequestProperty("User-Agent", HttpConnections.USER_AGENT);
-            con.setConnectTimeout(5000);
+            con.setConnectTimeout(args.timeout);
 
             int responseCode = con.getResponseCode();
-            System.out.println("\nSending 'GET' request to URL : " + instance.getIP());
+            System.out.println("\nSending remove request to Load Balancer, URL : " + instance.getIP());
             System.out.println("Response Code : " + responseCode);
         } catch (Exception e){
             e.printStackTrace();

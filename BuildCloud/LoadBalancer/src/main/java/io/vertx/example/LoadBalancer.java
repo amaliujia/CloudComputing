@@ -1,5 +1,6 @@
 package io.vertx.example;
 
+import javax.xml.crypto.Data;
 import java.io.IOException;
 import java.net.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -15,7 +16,8 @@ public class LoadBalancer {
 	private final String USER_AGENT = "Mozilla/5.0";
 	private final ServerSocket socket;
 	// private final List<DataCenterInstance> instances;
-	private final CopyOnWriteArrayList<DataCenterInstance> instances;
+	// private final CopyOnWriteArrayList<DataCenterInstance> instances;
+	private final List<DataCenterInstance> instances;
 	// private final String lock;
 	private final TimeWrapper timeWrapper;
 	private final ReentrantLock lock;
@@ -23,7 +25,7 @@ public class LoadBalancer {
 	private static boolean c = false;
 	private int indicator;
 
-	public LoadBalancer(ServerSocket socket, CopyOnWriteArrayList<DataCenterInstance> instances, TimeWrapper wrapper, ReentrantLock l) {
+	public LoadBalancer(ServerSocket socket,  List<DataCenterInstance> instances, TimeWrapper wrapper, ReentrantLock l) {
 		this.socket = socket;
 		this.instances = instances;
 		this.timeWrapper = wrapper;
@@ -44,30 +46,35 @@ public class LoadBalancer {
 						} else {
 							Thread.sleep(timeWrapper.period * 1000);
 							lock.lock();
-							for (int i = 0 ; i < instances.size(); i++) {
-								DataCenterInstance instance = instances.get(i);
+							Iterator<DataCenterInstance> iterator = instances.iterator();
+							while (iterator.hasNext()) {
+								DataCenterInstance instance = iterator.next();
 								System.out.println("\nHealth check: " + instance.getUrl());
 								try {
 									URL obj = new URL(instance.getUrl());
 									HttpURLConnection con = (HttpURLConnection) obj.openConnection();
 									con.setRequestMethod("GET");
 									con.setRequestProperty("User-Agent", USER_AGENT);
-									con.setConnectTimeout(2000);
-									//con.setReadTimeout(5000);
+									con.setConnectTimeout(350);
+									con.setReadTimeout(350);
 
 									int responseCode = con.getResponseCode();
 									if (responseCode != 200) {
 										System.out.println(instance.getUrl() + " died, remove it because not 200!");
-										instances.remove(i);
-										i--;
+//										// instances.remove(i);
+										iterator.remove();
+										//i--;
 									}
 								} catch (Exception e) {
 									System.out.println(instance.getUrl() + " died, remove it because exception!");
-									instances.remove(i);
-									i--;
+									//instances.remove(i);
+									iterator.remove();
+
+									//i--;
 								}
 							}
-							lock.unlock();}
+							lock.unlock();
+						}
 					}
 				} catch (InterruptedException e) {
 					e.printStackTrace();
@@ -81,7 +88,6 @@ public class LoadBalancer {
 			if (instances.size() == 0) {
 				continue;
 			}
-			System.out.println("instances has elements now!");
 
 			Socket sock = socket.accept();
 			lock.lock();

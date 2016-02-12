@@ -13,12 +13,18 @@ import org.openstack4j.model.compute.ServerCreate;
 import org.openstack4j.openstack.OSFactory;
 
 import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.InetAddress;
+import java.net.URL;
+import java.net.UnknownHostException;
 import java.util.*;
 
 /**
  * Created by amaliujia on 16-2-8.
  */
 public class AutoScalingService {
+    private final int ASG_port=15066;
+
     private String config;
 
     private static Vertx vertx;
@@ -44,11 +50,18 @@ public class AutoScalingService {
         AutoScalingService.params = this.loadConfiguration(this.config);
         System.out.println(AutoScalingService.params.toString());
 
-        //this.authenticate();
+        this.authenticate();
         System.out.println("authentication succeed!");
 
+        this.initBasic();
         this.initHttpServer();
         this.initCloudWatch();
+    }
+
+    private void initBasic() {
+        AutoScalingService.instances = new ArrayList<>();
+        AutoScalingService.flagWrapper = new FlagWrapper();
+        AutoScalingService.flagWrapper.isShutdown = false;
     }
 
     private void initHttpServer() {
@@ -61,32 +74,28 @@ public class AutoScalingService {
         // Create Router
         router = Router.router(vertx);
         router.route("/").handler(routingContext -> {
-            routingContext.response().end("OK");
+            routingContext.response().setStatusCode(200).end("OK");
+        });
+        router.route("/add").handler(routingContext -> {
+            routingContext.response().setStatusCode(200).end("OK");
+        });
+        router.route("/remove").handler(routingContext -> {
+            routingContext.response().setStatusCode(200).end("OK");
         });
 
         router.route("/stop").handler(AutoScalingService::handleStop);
 
-        // Listen for the request on port 8080
-        httpServer.requestHandler(router::accept).listen(8080);
+        // Listen for the request on port 15066
+        httpServer.requestHandler(router::accept).listen(ASG_port);
     }
 
     private void initCloudWatch() {
-        AutoScalingService.instances = new ArrayList<>();
-        AutoScalingService.flagWrapper = new FlagWrapper();
-        AutoScalingService.flagWrapper.isShutdown = false;
-
         String min_instance_str = AutoScalingService.params.get("MIN_INSTANCE");
         int min_instance = Integer.parseInt(min_instance_str);
-        String flavorId = AutoScalingService.params.get("DC_FLAVOR");
-        String imageId = AutoScalingService.params.get("DC_IMAGE");
         String LB_IP = AutoScalingService.params.get("LB_IPADDR");
 
         for (int i = 0; i < min_instance; i++) {
-            // Create a Server Model Object
-            ServerCreate VMInstance = Builders.server().name("DC-" + i).flavor(flavorId).image(imageId).build();
-
-            // Boot the Server
-            Server server = os.compute().servers().boot(VMInstance);
+            Server server = AutoScalingService.launchServer();
 
             // add instance to index
             DataCenterInstance instance = new DataCenterInstance(server);
@@ -94,55 +103,114 @@ public class AutoScalingService {
             AutoScalingService.instances.add(instance);
         }
 
-        try {
-            Thread.sleep(30 * 1000);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-
         Thread cloudwater = new Thread() {
             public void run() {
                 CloudWatch watch = new CloudWatch(AutoScalingService.params,
-                                                    AutoScalingService.os,
                                                     AutoScalingService.instances,
                                                     AutoScalingService.flagWrapper);
                 watch.start();
             }
         };
-
         cloudwater.start();
+    }
 
+    public static Server launchServer() {
+        String flavorId = AutoScalingService.params.get("DC_FLAVOR");
+        String imageId = AutoScalingService.params.get("DC_IMAGE");
+        String name = AutoScalingService.params.get("ASG_NAME");
+        String LB_IP = AutoScalingService.params.get("LB_IPADDR");
+        // Create a Server Model Object
+
+        // The Security Group has been built via dashboard
+        ServerCreate VMInstance = Builders.server().name(name).flavor(flavorId).image(imageId).addSecurityGroup("719_all_traffic").build();
+
+        // Boot the Server
+        Server server = os.compute().servers().boot(VMInstance);
+        System.out.println("Launch server " + server.getId() + ". Check status...\n");
+
+        while (server.getStatus() != Server.Status.ACTIVE) {
+            System.out.println("Build... ");
+            server = os.compute().servers().get(server.getId());
+            try {
+                Thread.sleep(3 * 1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        System.out.println("Active...\n");
+
+        while(true) {
+            try {
+                Thread.sleep(5 * 1000);
+                URL obj = new URL("http://" + server.getAddresses().getAddresses().get("private").get(0).getAddr());
+                HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+                con.setRequestMethod("GET");
+                con.setRequestProperty("User-Agent", "Mozilla/5.0");
+                con.setConnectTimeout(args.timeout);
+                //con.setReadTimeout(args.timeout);
+
+                int responseCode = con.getResponseCode();
+                System.out.println("DC Response Code : " + responseCode);
+                break;
+            } catch (Exception e) {
+                System.out.println(e.getMessage());
+                continue;
+            }
+        }
+
+        return server;
+    }
+
+    public static void killServer(String id) {
+        os.compute().servers().delete(id);
     }
 
     private static void handleStop(RoutingContext routingContext) {
+        AutoScalingService.authenticate();
+
         System.out.println("\nAuto Scaling Group will shut down.\n");
         AutoScalingService.flagWrapper.isShutdown = true;
+        String id_str = routingContext.request().getParam("id");
+        int id = Integer.parseInt(id_str);
 
         // ready to remove all instances
         Iterator<DataCenterInstance> iterator = instances.iterator();
         while (iterator.hasNext()) {
             DataCenterInstance instance = iterator.next();
-
-            System.out.println("\nShutting down....");
-            System.out.println(instance.toString());
-            // stop instance in Nova
-            os.compute().servers().action(instance.getServerID(), Action.STOP);
-
-            // remove from LB
+            System.out.println("\nShutting down " + instance.getIP() + " ...\n");
             HttpConnections.removeInstanceFromLoadBalancer(AutoScalingService.params.get("LB_IPADDR"), instance);
 
-            // remove from index
-            iterator.remove();
-            System.out.println("Shut down....\n");
-
         }
+        routingContext.response()
+                        .setStatusCode(200)
+                        .end("ASG " + id_str + " shutting down");
+        AutoScalingService.httpServer.close();
+
+        iterator = instances.iterator();
+        while (iterator.hasNext()) {
+            DataCenterInstance instance = iterator.next();
+            // stop instance in Nova
+            os.compute().servers().action(instance.getServerID(), Action.STOP);
+            // remove from index
+            // iterator.remove();
+        }
+
+        System.out.println("System down!");
+        System.exit(0);
     }
 
-    private void authenticate() {
+    private static void authenticate() {
         String username = AutoScalingService.params.get("USER_NAME");
         String password = AutoScalingService.params.get("PASSWORD");
+        String localAddr = null;
+        try {
+
+            localAddr = InetAddress.getLocalHost().getHostAddress();
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
         os = OSFactory.builder()
-                .endpoint("http://54.164.97.164:5000/v2.0")
+                .endpoint("http://" + localAddr +":5000/v2.0")
                 .credentials(username, password)
                 .tenantName(AutoScalingService.params.get("PROJECT_NAME"))
                 .authenticate();
@@ -173,10 +241,3 @@ public class AutoScalingService {
         return ret;
     }
 }
-
-//import urllib
-//
-//        myPort = "8080"
-//        myParameters = { "date" : "whatever", "another_parameters" : "more_whatever" }
-//
-//        myURL = "http://localhost:%s/read?%s" % (myPort, urllib.urlencode(myParameters))

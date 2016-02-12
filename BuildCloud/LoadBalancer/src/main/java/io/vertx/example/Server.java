@@ -43,7 +43,8 @@ public class Server {
      */
     private static final int PORT = 80;
     // private static List<DataCenterInstance> instances;
-    private static CopyOnWriteArrayList<DataCenterInstance> instances;
+//    private static CopyOnWriteArrayList<DataCenterInstance> instances;
+    private static List<DataCenterInstance> instances;
     private static ServerSocket serverSocket;
     // private static String lock = "lock";
     private static ReentrantLock lock;
@@ -58,8 +59,8 @@ public class Server {
      */
     public static void main(String[] args) throws NamingException {
         // create dataCenterList
-        // instances = new ArrayList<DataCenterInstance>();
-        instances = new CopyOnWriteArrayList<>();
+        instances = new ArrayList<DataCenterInstance>();
+        // instances = new CopyOnWriteArrayList<>();
         lock = new ReentrantLock();
         // init cooldown period
         wrapper = new TimeWrapper();
@@ -129,6 +130,7 @@ public class Server {
     }
 
     private static void handleRemove(RoutingContext routingContext) {
+        System.out.println("http remove data request");
         String dnsName = routingContext.request().getParam("ip");
         if (!InetAddresses.isInetAddress(dnsName)) {
             routingContext.response()
@@ -138,16 +140,8 @@ public class Server {
             return;
         }
 
-            System.out.println("http remove data center instance with ip " + dnsName);
-//            Iterator<DataCenterInstance> iterator = instances.iterator();
-//
-//            while (iterator.hasNext()) {
-//                DataCenterInstance instance = iterator.next();
-//                if (instance.getIP().equals(dnsName)) {
-//                    iterator.remove();
-//                    break;
-//                }
-//            }
+        System.out.println("http remove data center instance with ip " + dnsName);
+
         lock.lock();
             for (int i = 0; i < instances.size(); i++) {
                 DataCenterInstance instance = instances.get(i);
@@ -165,6 +159,7 @@ public class Server {
     }
 
     private static void handleCheck(RoutingContext routingContext) {
+        System.out.println("http add data request");
        String ret = "";
         Iterator<DataCenterInstance> iterator = instances.iterator();
         lock.lock();
@@ -183,6 +178,7 @@ public class Server {
     }
 
     private static void handleAdd(RoutingContext routingContext) {
+        System.out.println("http add data request");
         // to get argument from http request
         String dnsName = routingContext.request().getParam("ip");
         if (!InetAddresses.isInetAddress(dnsName)) {
@@ -192,12 +188,14 @@ public class Server {
                     .end("wrong ip\n");
             return;
         }
+
         lock.lock();
         System.out.println("add data center instance with ip " + dnsName);
         DataCenterInstance instance = new DataCenterInstance("DC-" + instanceID, dnsName);
         instances.add(instance);
         instanceID += 1;
         lock.unlock();
+
         routingContext.response().setStatusCode(200)
                                  .putHeader("Content-Type", "text/plain; charset=utf-8")
                                  .end("add dc instance successfully\n");
