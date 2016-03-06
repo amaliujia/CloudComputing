@@ -15,7 +15,7 @@ def to_csv(x):
 def get_parameters():
     params = dict()
     params['block'] = 8 
-    params['num_iter'] = 10 
+    params['num_iter'] = 1 
     params['eta'] = 0.001
     params['eta_decay'] = 0.99
     #params['input_file'] = "/user/deepbic/ratings_1M.csv"
@@ -74,6 +74,9 @@ def dsgd_test(x):
         W_dict[i[0]] = i[1]
     for i in H:
         H_dict[i[0]] = i[1]
+    if Z == None:
+        return (tuple(['W',W_dict.items()]), tuple(['H',H_dict.items()]))
+
     for entry in Z:
         (i, j, rating) = entry
         if i not in W_dict:
@@ -86,55 +89,7 @@ def dsgd_test(x):
         H_dict[j] -= eta_bc.value * H_gradient
         W_dict[i] -= eta_bc.value * W_gradient
     return (tuple(['W',W_dict.items()]), tuple(['H',H_dict.items()]))
-    #return (block_id, W_dict.items())   
     
-def dsgd(x):
-    tmp = x.next()
-    iter_list = tmp[1]
-    Z = iter_list[0]
-    W = iter_list[1]
-    H = iter_list[2]
-    W_dict = {}
-    H_dict = {}
-    # i is (i, factor vector)
-    for i in W:
-        W_dict[i[0]] = i[1] 
-        # j is (j, factor vector)
-    for i in H:
-        H_dict[i[0]] = i[1]
-    for entry in Z:
-        (i, j, rating) = entry
-        if i not in W_dict:
-            W_dict[i] = np.random.rand(1, rank_b.value).astype(np.float32)
-        if j not in H_dict:
-            H_dict[j] = np.random.rand(1, rank_b.value).astype(np.float32)
-        diff = rating - np.dot(W_dict[i], H_dict[j].T)
-        # W
-        W_gradient = -2 * diff * H_dict[j]
-        #W_dict[i] -= eta_bc.value * W_gradient
-        # H
-        H_gradient = -2 * diff * W_dict[i]
-        H_dict[j] -= eta_bc.value * H_gradient
-        W_dict[i] -= eta_bc.value * W_gradient
-    return (tuple(['W',W_dict.items()]), tuple(['H',H_dict.items()]))
-
-def evaluate(block_data, W, H):
-    W_dict = {}
-    H_dict = {}
-    for ele in W:
-        id, (i, vec) = ele 
-        W_dict[i] = vec
-    for ele in H:
-        id, (i, vec) = ele 
-        H_dict[i] = vec
-    count = 0 
-    error = 0 
-    for entry in block_data:
-        i, j, rating = entry
-        count += 1
-        error += (rating - np.dot(W_dict[i], H_dict[j].T)) ** 2 
-    return error[0][0], np.sqrt(error / count)[0][0]
-
 def evaluate_test(block_data, W, H):
     W_dict = {}
     H_dict = {}
@@ -218,10 +173,12 @@ for j in range(0, params['num_iter']):
         key_data_filter = key_data.filter(lambda x : filter_blocks(x, i, blocks_col_dim, blocks)).groupByKey()
         # join here
         HW_rdd = W_rdd.join(H_rdd)
-        merged_rdd = key_data_filter.join(HW_rdd).partitionBy(num_workers)
+        merged_rdd = key_data_filter.rightOuterJoin(HW_rdd).partitionBy(num_workers)
+        
         update_rdd = merged_rdd.mapPartitions(lambda x : dsgd_test(x)).reduceByKey(lambda x, y: x + y)
         W_new_rdd = update_rdd.filter(lambda x: x[0]=='W').flatMap(lambda x: x[1])
         H_new_rdd = update_rdd.filter(lambda x: x[0]=='H').flatMap(lambda x: x[1])
+          
         if j == params['num_iter'] - 1 and i == blocks - 1:
             W_csv_rdd = W_new_rdd.sortBy(lambda x: x[0]).map(to_csv)
             H_csv_rdd = H_new_rdd.sortBy(lambda x: x[0]).map(to_csv)
