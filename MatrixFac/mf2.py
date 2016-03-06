@@ -15,7 +15,7 @@ def to_csv(x):
 def get_parameters():
     params = dict()
     params['block'] = 8 
-    params['num_iter'] = 2 
+    params['num_iter'] = 10 
     params['eta'] = 0.001
     params['eta_decay'] = 0.99
     #params['input_file'] = "/user/deepbic/ratings_1M.csv"
@@ -27,27 +27,39 @@ def map_line(line):
 
 # x is (row_block_id, (i, j, rating))
 def filter_blocks(x, offset, col_dim, blocks):
-    col_dim_id = int((x[1][1]-1) / col_dim)
+    if x[1][1] == 0:
+        col_dim_id = int((x[1][1]) / col_dim) 
+    else:
+        col_dim_id = int((x[1][1]-1) / col_dim)
     return ((x[0] + offset) %  blocks) == col_dim_id
 
 # x is (i, factor vector)
 def assign_block_W(x, row_dim):
     i, _ = x
+    if i == 0:
+        return int((i/row_dim))
     return int((i-1) / row_dim)
 
 # y is (j, factor vector)
 def assign_block_H(x, col_dim):
     j, _ = x
+    if j == 0:
+        return int((j/col_dim))
     return int((j-1) / col_dim)
 
 def assign_block_H_off(x, col_dim, off, blocks):
     j, _ = x
-    col_dim_id = int((j-1) / col_dim)
+    c = j
+    if j == 0:
+        c = j + 1
+    col_dim_id = int((c-1) / col_dim)
     true_dim_id = int((col_dim_id + blocks - off) % blocks) 
     return true_dim_id
 
 # x is (i, j, rating)
 def assign_block(x, row_dim):
+    if x[0] == 0:
+        return int((x / row_dim))
     return int((x[0] - 1) / row_dim)
 
 def dsgd_test(x):
@@ -180,11 +192,11 @@ user_num = user_num + 1
 movie_num = movie_num + 1
 
 W = []
-for i in range(1, user_num):
+for i in range(0, user_num):
     W.append((i, np.random.rand(1, rank).astype(np.float32)))
 
 H = []
-for i in range(1, movie_num):
+for i in range(0, movie_num):
     H.append((i, np.random.rand(1, rank).astype(np.float32)))
 
 # groupByKey() 
@@ -215,20 +227,19 @@ for j in range(0, params['num_iter']):
             H_csv_rdd = H_new_rdd.sortBy(lambda x: x[0]).map(to_csv)
             W_csv_rdd.coalesce(1).saveAsTextFile(output_w) 
             H_csv_rdd.coalesce(1).saveAsTextFile(output_h)  
-        else:
-            W_rdd = W_new_rdd.groupBy(lambda x : assign_block_W(x, blocks_row_dim)) 
-            H_rdd = H_new_rdd.groupBy(lambda x : assign_block_H_off(x, blocks_col_dim, i + 1, num_workers)) 
-    #W_new = W_rdd.collect()
-    #H_new = H_rdd.collect()
-    #block_data_py = block_data.collect()
-    #error, RSME = evaluate_test(block_data_py, W_new, H_new)  
-    #t2 = time.clock()
-    #log = log + str(j) + " " + str(t2 - t1) + " " + str(error) + " " + str(RSME) + "\n" 
+        W_rdd = W_new_rdd.groupBy(lambda x : assign_block_W(x, blocks_row_dim)) 
+        H_rdd = H_new_rdd.groupBy(lambda x : assign_block_H_off(x, blocks_col_dim, i + 1, num_workers)) 
+    W_new = W_rdd.collect()
+    H_new = H_rdd.collect()
+    block_data_py = block_data.collect()
+    error, RSME = evaluate_test(block_data_py, W_new, H_new)  
+    t2 = time.clock()
+    log = log + str(j) + " " + str(t2 - t1) + " " + str(error) + " " + str(RSME) + "\n" 
     cur_eta = eta_bc.value 
     eta_bc.unpersist()
     cur_eta *= 0.99
     eta_bc = sc.broadcast(cur_eta) 
-#print log
+print log
 #W_csv_rdd = W_rdd.map(lambda x : list(x[1])).sortBy(lambda x: x[0]).map(to_csv)
 #print W_csv_rdd.take(15)
 #W_csv_rdd.coalesce(1).saveAsTextFile(output_w) 
