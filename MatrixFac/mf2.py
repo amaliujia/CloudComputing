@@ -15,7 +15,7 @@ def to_csv(x):
 def get_parameters():
     params = dict()
     params['block'] = 8 
-    params['num_iter'] = 20 
+    params['num_iter'] = 2 
     params['eta'] = 0.001
     params['eta_decay'] = 0.99
     #params['input_file'] = "/user/deepbic/ratings_1M.csv"
@@ -40,9 +40,15 @@ def assign_block_H(x, col_dim):
     j, _ = x
     return int((j-1) / col_dim)
 
+def assign_block_H_off(x, col_dim, off, blocks):
+    j, _ = x
+    col_dim_id = int((j-1) / col_dim)
+    true_dim_id = int((col_dim_id + blocks - off) % blocks) 
+    return true_dim_id
+
 # x is (i, j, rating)
 def assign_block(x, row_dim):
-    return int((x[0]-1) / row_dim)
+    return int((x[0] - 1) / row_dim)
 
 def dsgd_test(x):
     tmp = x.next()
@@ -52,27 +58,18 @@ def dsgd_test(x):
     H = tmp[1][1][1]
     W_dict = {}
     H_dict = {}
-    # i is (i, factor vector)
     for i in W:
         W_dict[i[0]] = i[1]
-        # j is (j, factor vector)
     for i in H:
         H_dict[i[0]] = i[1]
-    
     for entry in Z:
         (i, j, rating) = entry
-        #if i not in W_dict:
-        #    W_dict[i] = np.random.rand(1, rank).astype(np.float32)
-        #if j not in H_dict:
-        #    H_dict[j] = np.random.rand(1, rank).astype(np.float32)
-        if j == 3952:
-            print "--------------"
-            print i, j 
+        if i not in W_dict:
+            print "i not in " + str(i)
+        if j not in H_dict:
+            print "j not in " + str(j)
         diff = rating - np.dot(W_dict[i], H_dict[j].T)
-        # W
         W_gradient = -2 * diff * H_dict[j]
-        #W_dict[i] -= eta_bc.value * W_gradient
-        # H
         H_gradient = -2 * diff * W_dict[i]
         H_dict[j] -= eta_bc.value * H_gradient
         W_dict[i] -= eta_bc.value * W_gradient
@@ -168,8 +165,8 @@ log += "compute dimension of matrix"
 log += str(time.clock() - t) 
 log += "\n"
 
-user_num = user_num[0] + 1
-movie_num = movie_num[1] + 1
+user_num = user_num[0]
+movie_num = movie_num[1]
     
 # block sizes
 blocks_row_dim = int(user_num / params['block'])
@@ -179,10 +176,13 @@ if user_num % blocks != 0:
 num_workers = blocks
 
 eta_bc = sc.broadcast(params['eta'])
+user_num = user_num + 1
+movie_num = movie_num + 1
 
 W = []
 for i in range(1, user_num):
     W.append((i, np.random.rand(1, rank).astype(np.float32)))
+
 H = []
 for i in range(1, movie_num):
     H.append((i, np.random.rand(1, rank).astype(np.float32)))
@@ -210,24 +210,27 @@ for j in range(0, params['num_iter']):
         update_rdd = merged_rdd.mapPartitions(lambda x : dsgd_test(x)).reduceByKey(lambda x, y: x + y)
         W_new_rdd = update_rdd.filter(lambda x: x[0]=='W').flatMap(lambda x: x[1])
         H_new_rdd = update_rdd.filter(lambda x: x[0]=='H').flatMap(lambda x: x[1])
-        W_rdd = W_new_rdd.groupBy(lambda x : assign_block_W(x, blocks_row_dim)) 
-        H_rdd = H_new_rdd.groupBy(lambda x : assign_block_H(x, blocks_col_dim)) 
-    #if j == 9: 
-    W_new = W_rdd.collect()
-    H_new = H_rdd.collect()
-    block_data_py = block_data.collect()
-    error, RSME = evaluate_test(block_data_py, W_new, H_new)  
-    t2 = time.clock()
-    log = log + str(j) + " " + str(t2 - t1) + " " + str(error) + " " + str(RSME) + "\n" 
+        if j == params['num_iter'] - 1 and i == blocks - 1:
+            W_csv_rdd = W_new_rdd.sortBy(lambda x: x[0]).map(to_csv)
+            H_csv_rdd = H_new_rdd.sortBy(lambda x: x[0]).map(to_csv)
+            W_csv_rdd.coalesce(1).saveAsTextFile(output_w) 
+            H_csv_rdd.coalesce(1).saveAsTextFile(output_h)  
+        else:
+            W_rdd = W_new_rdd.groupBy(lambda x : assign_block_W(x, blocks_row_dim)) 
+            H_rdd = H_new_rdd.groupBy(lambda x : assign_block_H_off(x, blocks_col_dim, i + 1, num_workers)) 
+    #W_new = W_rdd.collect()
+    #H_new = H_rdd.collect()
+    #block_data_py = block_data.collect()
+    #error, RSME = evaluate_test(block_data_py, W_new, H_new)  
+    #t2 = time.clock()
+    #log = log + str(j) + " " + str(t2 - t1) + " " + str(error) + " " + str(RSME) + "\n" 
     cur_eta = eta_bc.value 
     eta_bc.unpersist()
     cur_eta *= 0.99
     eta_bc = sc.broadcast(cur_eta) 
-print log
+#print log
 #W_csv_rdd = W_rdd.map(lambda x : list(x[1])).sortBy(lambda x: x[0]).map(to_csv)
 #print W_csv_rdd.take(15)
 #W_csv_rdd.coalesce(1).saveAsTextFile(output_w) 
 #csv_rdd = H_rdd.map(lambda x : x[1]).sortBy(lambda x: x[0]).map(to_csv)
 #H_csv_rdd.coalesce(1).saveAsTextFile(output_h) 
-
-print log
