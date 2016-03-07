@@ -127,17 +127,20 @@ num_workers = blocks
 
 eta_bc = sc.broadcast(params['eta'])
 
-W = []
-for i in range(1, user_num):
-    W.append((i, np.random.rand(1, rank).astype(np.float32)))
-H = []
-for i in range(1, movie_num):
-    H.append((i, np.random.rand(1, rank).astype(np.float32)))
+#W = []
+#for i in range(1, user_num):
+#    W.append((i, np.random.rand(1, rank).astype(np.float32)))
+#H = []
+#for i in range(1, movie_num):
+#    H.append((i, np.random.rand(1, rank).astype(np.float32)))
 
 # groupByKey() 
-W_rdd = sc.parallelize(W).keyBy(lambda x : assign_block_W(x, blocks_row_dim)).partitionBy(num_workers) 
-H_rdd = sc.parallelize(H).keyBy(lambda x : assign_block_H(x, blocks_col_dim)).partitionBy(num_workers)
+#W_rdd = sc.parallelize(W).keyBy(lambda x : assign_block_W(x, blocks_row_dim)).partitionBy(num_workers) 
+#H_rdd = sc.parallelize(H).keyBy(lambda x : assign_block_H(x, blocks_col_dim)).partitionBy(num_workers)
 # join here
+W_rdd = block_data.map(lambda x : x[0]).distinct().map(lambda x : (x, np.random.rand(1, rank).astype(np.float32))).groupBy(lambda x : assign_block_W(x, blocks_row_dim))
+H_rdd = block_data.map(lambda x : x[1]).distinct().map(lambda x : (x, np.random.rand(1, rank).astype(np.float32))).groupBy(lambda x : assign_block_H(x, blocks_col_dim))
+
 t = time.clock()
 log += "Init factor matrix rdd"
 log += str(time.clock() - t) 

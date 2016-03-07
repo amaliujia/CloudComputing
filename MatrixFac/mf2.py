@@ -15,8 +15,8 @@ def to_csv(x):
 def get_parameters():
     params = dict()
     params['block'] = 8 
-    params['num_iter'] = 1 
-    params['eta'] = 0.001
+    params['num_iter'] = 5 
+    params['eta'] = 0.015
     params['eta_decay'] = 0.99
     #params['input_file'] = "/user/deepbic/ratings_1M.csv"
     return params
@@ -146,17 +146,20 @@ eta_bc = sc.broadcast(params['eta'])
 user_num = user_num + 1
 movie_num = movie_num + 1
 
-W = []
-for i in range(0, user_num):
-    W.append((i, np.random.rand(1, rank).astype(np.float32)))
+#W = []
+#for i in range(0, user_num):
+#    W.append((i, np.random.rand(1, rank).astype(np.float32)))
 
-H = []
-for i in range(0, movie_num):
-    H.append((i, np.random.rand(1, rank).astype(np.float32)))
+#H = []
+#for i in range(0, movie_num):
+#    H.append((i, np.random.rand(1, rank).astype(np.float32)))
 
 # groupByKey() 
-W_rdd = sc.parallelize(W).groupBy(lambda x : assign_block_W(x, blocks_row_dim)) 
-H_rdd = sc.parallelize(H).groupBy(lambda x : assign_block_H(x, blocks_col_dim))
+#W_rdd = sc.parallelize(W).groupBy(lambda x : assign_block_W(x, blocks_row_dim)) 
+#H_rdd = sc.parallelize(H).groupBy(lambda x : assign_block_H(x, blocks_col_dim))
+
+W_rdd = block_data.map(lambda x : x[0]).distinct().map(lambda x : (x, np.random.rand(1, rank).astype(np.float32))).groupBy(lambda x : assign_block_W(x, blocks_row_dim))
+H_rdd = block_data.map(lambda x : x[1]).distinct().map(lambda x : (x, np.random.rand(1, rank).astype(np.float32))).groupBy(lambda x : assign_block_H(x, blocks_col_dim))
 
 t = time.clock()
 log += "Init factor matrix rdd"
@@ -182,8 +185,8 @@ for j in range(0, params['num_iter']):
         if j == params['num_iter'] - 1 and i == blocks - 1:
             W_csv_rdd = W_new_rdd.sortBy(lambda x: x[0]).map(to_csv)
             H_csv_rdd = H_new_rdd.sortBy(lambda x: x[0]).map(to_csv)
-            W_csv_rdd.coalesce(1).saveAsTextFile(output_w) 
-            H_csv_rdd.coalesce(1).saveAsTextFile(output_h)  
+            #W_csv_rdd.coalesce(1).saveAsTextFile(output_w) 
+            #H_csv_rdd.coalesce(1).saveAsTextFile(output_h)  
         W_rdd = W_new_rdd.groupBy(lambda x : assign_block_W(x, blocks_row_dim)) 
         H_rdd = H_new_rdd.groupBy(lambda x : assign_block_H_off(x, blocks_col_dim, i + 1, num_workers)) 
     W_new = W_rdd.collect()
